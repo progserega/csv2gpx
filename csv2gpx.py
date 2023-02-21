@@ -1,45 +1,63 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import csv
 import sys
+import re
 from datetime import datetime
 
-arg = 4
+arg = 2
 
+def grad2deg(grad_str):
+  # 25˚2′0.69564″ -> 25.3242453
+  print("in=%s"%grad_str)
+  grad=grad_str.split('˚')[0]
+  min_str=grad_str.split('˚')[1]
+  minutes=min_str.split("′")[0]
+  #print(min_str)
+  sec=re.sub(r'″$',r'',min_str.split("′")[1])
+  #print("grad=%s, minutes=%s, seconds=%s"%(grad,minutes,sec))
+  result=int(grad)
+  result+=int(minutes)/60
+  result+=float(sec)/3600
+  print("result=%f"%result)
+  return result
 
-def csv2gpx(name_trk, file_name_gpx, file_name_csv, route_file):
-    # Variable to change
-    # name_trk = "Test"
-    # file_name_gpx = "route"
-    # file_name_csv = "location"
-    # route_file = "C:\\Users\\DavidFrias\\Desktop\\"
-
+def csv2gpx(file_name_csv, file_name_gpx):
     # CSV route file
-    csvfile = open(route_file + file_name_csv + ".csv", "r")
-    gpxfile = open(route_file + file_name_gpx + '.gpx', 'w')
+    csvfile = open(file_name_csv, "r")
+    gpxfile = open(file_name_gpx, 'w')
 
     # read a CSV and establish the header (name of header)
-    csv_reader = csv.reader(csvfile)
-    header = csv_reader.next()
-    lat = header.index("latitude")
-    lon = header.index("longitude")
-    alt = header.index("altitude")
-    bearing = header.index("bearing")
-    speed = header.index("speed")
-    accuracy = header.index("accuracy")
-    sensorTime = header.index("sensorTimestamp")
-    systemTime = header.index("systemTimestamp")
+    csv_reader = csv.DictReader(csvfile)
     trk = ""
     coord_list = []
     for row in csv_reader:
-        coord_list.append([row[lat], row[lon], row[alt]])
-        time = datetime.utcfromtimestamp(long(row[systemTime])//1000).replace(microsecond=long(row[systemTime])%1000*1000)
+        if "˚" in row['lat'] or "'" in row['lat'] or "′" in row["lat"]:
+          # конвертируем grad->deg:
+          lat=grad2deg(row['lat'])
+          lon=grad2deg(row['lon'])
+        else:
+          lat=row['lat']
+          lon=row['lon']
+
+        if 'ele' in row:
+          coord_list.append([lat, lon, row['ele']])
+        elif 'alt' in row:
+          coord_list.append([lat, lon, row['alt']])
+        else:
+          coord_list.append([lat, lon, "0"])
         # create a segment track (point)
-        trk += '<trkpt lat ="' + row[lat] + '" lon ="' + row[lon] + '">'
+        trk += '<wpt lat ="' + "%f"%lat + '" lon ="' + "%f"%lon + '">'
         trk += '\n'
-        trk += '<ele>' + row[alt] + '</ele>'
-        trk += '\n'
-        trk+='<time>' + time.isoformat()[:-3]+'Z' + '</time>'
+        if 'ele' in row:
+          trk += '<ele>' + row['ele'] + '</ele>'
+          trk += '\n'
+        if 'alt' in row:
+          trk += '<ele>' + row['alt'] + '</ele>'
+          trk += '\n'
+        trk+='<name>' + row['name'] + '</name>'
         trk+='\n'
-        trk += '</trkpt>'
+        trk += '</wpt>'
         trk += '\n'
     min_coord = min(coord_list)
     max_coord = max(coord_list)
@@ -48,8 +66,8 @@ def csv2gpx(name_trk, file_name_gpx, file_name_csv, route_file):
     def metada_gpx():
         gpxfile.write('<metadata>')
         gpxfile.write('\n')
-        gpxfile.write('<bounds minlat="' + min_coord[0] + '" minlon = "' + min_coord[1] + '" maxlat = "' + max_coord[
-            0] + '" maxlon = "' + max_coord[1] + '"/>')
+        gpxfile.write('<bounds minlat="' + "%f"%min_coord[0] + '" minlon = "' + "%f"%min_coord[1] + '" maxlat = "' + "%f"%max_coord[
+            0] + '" maxlon = "' + "%f"%max_coord[1] + '"/>')
         gpxfile.write('\n')
         gpxfile.write('</metadata>')
         gpxfile.write('\n')
@@ -63,21 +81,9 @@ def csv2gpx(name_trk, file_name_gpx, file_name_csv, route_file):
         gpxfile.write('\n')
         metada_gpx()
 
-    # create a track GPX
-    def trk_gpx():
-        gpxfile.write('<trk>')
-        gpxfile.write('\n')
-        gpxfile.write('<name>' + name_trk + '</name>')
-        gpxfile.write('\n')
-        gpxfile.write('<cmt/>')
-        gpxfile.write('\n')
-        gpxfile.write('<trkseg>')
-        gpxfile.write('\n')
-
     # Establish header GPX
     header_gpx()
-    trk_gpx()
-    # segment track (points)
+    # waypoints:
     gpxfile.write(trk)
 
     # close file GPX
@@ -85,20 +91,13 @@ def csv2gpx(name_trk, file_name_gpx, file_name_csv, route_file):
         gpxfile.write('</gpx>')
 
     # close track GPX
-    def finish_trk_gpx():
-        gpxfile.write('</trkseg>')
-        gpxfile.write('\n')
-        gpxfile.write('</trk>')
-        gpxfile.write('\n')
-
-    finish_trk_gpx()
     finish_header_gpx()
 
-    print "File created!!"
+    print("File created!!")
 
 
 if __name__ == "__main__":
     if len(sys.argv) != arg + 1:
         print("Error - You must put correctly the arguments")
         sys.exit(1)
-    csv2gpx(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+    csv2gpx(sys.argv[1], sys.argv[2])
